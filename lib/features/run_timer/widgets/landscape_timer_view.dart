@@ -72,8 +72,11 @@ class LandscapeWorkoutViewState extends State<LandscapeWorkoutView> {
                 Expanded(
                     flex: 20,
                     child: RunTimerAppBar(
-                      text: widget.intervalTiles.length > 0
+                      intervalLabel: widget.intervalTiles.length > 0
                           ? widget.intervalTiles[0].intervalString()
+                          : "",
+                      setLabel: widget.intervalTiles.length > 0
+                          ? widget.intervalTiles[0].setString()
                           : "",
                     )),
                 Expanded(

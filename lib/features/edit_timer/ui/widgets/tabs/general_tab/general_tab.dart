@@ -11,6 +11,7 @@ import 'package:unit_number_input/unit_number_input.dart';
 class GeneralTab extends StatelessWidget {
   final TextEditingController nameController;
   final TextEditingController activeIntervalsController;
+  final TextEditingController restartsController;
   final Map<String, UnitNumberInputController> timeSettingsControllers;
   final ValueChanged<StartSaveState> onEdited;
   final ValueChanged<bool> onUnitToggle;
@@ -22,6 +23,7 @@ class GeneralTab extends StatelessWidget {
       {super.key,
       required this.nameController,
       required this.activeIntervalsController,
+      required this.restartsController,
       required this.timeSettingsControllers,
       required this.onEdited,
       required this.onUnitToggle,
@@ -328,27 +330,32 @@ class GeneralTab extends StatelessWidget {
               ),
             ),
             ListTile(
-              key: const Key("restarts"),
-              title: const Text('Restarts'),
-              subtitle: Text('Optional'),
+              title: const Text('Sets'),
+              subtitle: const Text('Optional, total sets to run'),
               leading: const Icon(Icons.replay),
-              trailing: FittedBox(
-                fit: BoxFit.contain,
-                child: UnitNumberInput(
-                  controller: timeSettingsControllers['restarts']!,
-                  prefill: editing,
-                  enableMinutesToggle: false,
-                  valueRequired: false,
+              trailing: SizedBox(
+                width: 80,
+                child: TextFormField(
+                  key: const Key("restarts"),
+                  controller: restartsController,
+                  decoration: inputDecoration,
+                  maxLength: 3,
+                  style: const TextStyle(fontSize: 30),
+                  textAlign: TextAlign.end,
+                  keyboardType: TextInputType.number,
+                  validator: (value) => null,
                   onChanged: (value) {
-                    provider.setTimerTimeSettingPart(restarts: value);
+                    final sets = value.isEmpty ? 0 : int.tryParse(value) ?? 0;
+                    provider.setTimerTimeSettingPart(restarts: sets);
                     onEdited(StartSaveState.save);
-                    logger.d("Restarts time changed to $value");
+                    logger.d("Sets changed to $sets");
 
-                    // If restarts = 0, force breakTime = 0
-                    if (value == 0) {
+                    // If sets = 0, force breakTime = 0
+                    if (sets == 0) {
                       provider.setTimerTimeSettingPart(breakTime: 0);
                       timeSettingsControllers['break']?.setTotalSeconds(0);
-                      logger.d("Break time forced to 0 because restarts = 0");
+                      logger.d(
+                          "Rest between sets forced to 0 because sets = 0");
                     }
                   },
                 ),
@@ -357,8 +364,8 @@ class GeneralTab extends StatelessWidget {
             ListTile(
               key: const Key("break"),
               enabled: provider.breakEnabled,
-              title: const Text('Break'),
-              subtitle: Text('Optional, between restarts'),
+              title: const Text('Rest between sets'),
+              subtitle: Text('Optional, between sets'),
               leading: const Icon(Icons.snooze),
               trailing: FittedBox(
                 fit: BoxFit.contain,
@@ -371,7 +378,7 @@ class GeneralTab extends StatelessWidget {
                   onChanged: (value) {
                     provider.setTimerTimeSettingPart(breakTime: value);
                     onEdited(StartSaveState.save);
-                    logger.d("Break time changed to $value");
+                    logger.d("Rest between sets time changed to $value");
                   },
                 ),
               ),

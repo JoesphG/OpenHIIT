@@ -71,8 +71,11 @@ class PortraitWorkoutViewState extends State<PortraitWorkoutView> {
             Expanded(
                 flex: 8,
                 child: RunTimerAppBar(
-                  text: widget.intervalTiles.length > 0
+                  intervalLabel: widget.intervalTiles.length > 0
                       ? widget.intervalTiles[0].intervalString()
+                      : "",
+                  setLabel: widget.intervalTiles.length > 0
+                      ? widget.intervalTiles[0].setString()
                       : "",
                 )),
             Expanded(

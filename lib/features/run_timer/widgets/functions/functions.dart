@@ -16,26 +16,49 @@ List<TimerListTileModel> listItems(
     TimerType timer, List<IntervalType> intervals) {
   List<TimerListTileModel> listItems = [];
 
-  int workIntervalIndex = ["Rest", "Get Ready", "Warmup", "Cooldown", "Break"]
-          .contains(intervals.first.name)
-      ? 0
-      : 1;
+  const nonActiveNames = {"Rest", "Get Ready", "Warmup", "Cooldown", "Break"};
+  final totalSets =
+      (timer.timeSettings.restarts > 0 ? timer.timeSettings.restarts + 1 : 1);
+
+  int workIntervalIndex = 0;
+  int currentSet = 1;
+  bool setIncrementPending = false;
+
   for (var interval in intervals) {
+    final isActive = !nonActiveNames.contains(interval.name);
+    final isBetweenSets = setIncrementPending && !isActive;
+
+    if (setIncrementPending) {
+      if (!isActive || workIntervalIndex >= timer.activeIntervals) {
+        if (currentSet < totalSets) {
+          currentSet += 1;
+        }
+        workIntervalIndex = 0;
+        setIncrementPending = false;
+      }
+    }
+
+    if (isActive) {
+      workIntervalIndex += 1;
+      if (workIntervalIndex == timer.activeIntervals &&
+          currentSet < totalSets) {
+        setIncrementPending = true;
+      }
+    }
+
     listItems.add(
       TimerListTileModel(
-        action: interval.name,
+        action: interval.name == "Break" || isBetweenSets
+            ? "Rest between sets"
+            : interval.name,
         showMinutes: timer.showMinutes,
-        interval: ["Rest", "Get ready", "Warmup", "Cooldown", "Break"]
-                .contains(interval.name)
-            ? 0
-            : workIntervalIndex++,
+        interval: isActive ? workIntervalIndex : 0,
         total: timer.activeIntervals,
         seconds: interval.time,
+        set: currentSet,
+        totalSets: totalSets,
       ),
     );
-    if (interval.id.contains("break")) {
-      workIntervalIndex = 1;
-    }
   }
 
   return listItems;

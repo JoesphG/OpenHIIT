@@ -119,12 +119,31 @@ class TimerCardItemAnimated extends StatelessWidget {
                   child: Padding(
                       padding: EdgeInsets.fromLTRB(
                           8, calcPadding(context), 8.0, calcPadding(context)),
-                      child: AutoSizeText(
-                        item.action.padRight(50, " "),
-                        maxLines: 2,
-                        minFontSize: 20,
-                        maxFontSize: 20000,
-                        style: TextStyle(fontSize: 20000, color: fontColor),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          AutoSizeText(
+                            item.action,
+                            maxLines: 2,
+                            minFontSize: 14,
+                            maxFontSize: 28,
+                            overflow: TextOverflow.ellipsis,
+                            stepGranularity: 1,
+                            style: TextStyle(fontSize: 28, color: fontColor),
+                          ),
+                          if (item.setString().isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4.0),
+                              child: Text(
+                                item.setString(),
+                                style: TextStyle(
+                                    fontSize: 14,
+                                    color: fontColor.withOpacity(0.8),
+                                    fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                        ],
                       ))),
               // Time allotted to the interval.
               Expanded(
@@ -135,10 +154,12 @@ class TimerCardItemAnimated extends StatelessWidget {
                     child: AutoSizeText(
                       item.timeString(),
                       maxLines: 1,
-                      minFontSize: 0,
-                      maxFontSize: 20000,
+                      minFontSize: 14,
+                      maxFontSize: 32,
+                      overflow: TextOverflow.ellipsis,
+                      stepGranularity: 1,
                       textAlign: TextAlign.end,
-                      style: TextStyle(fontSize: 20000, color: fontColor),
+                      style: TextStyle(fontSize: 32, color: fontColor),
                     )),
               )
             ],

@@ -78,8 +78,8 @@ void main() {
         tester, find.textContaining("2 of 2"), Duration(seconds: 30), false,
         screenShotName: '19_advanced-timer_work-interval-2-iteration-1');
 
-    expect(find.textContaining("Break"), findsNothing,
-        reason: 'Break interval found when it should not be present');
+    expect(find.textContaining("Rest between sets"), findsNothing,
+        reason: 'Rest-between-sets interval found when it should not be present');
 
     // Exit the running timer.
     await tapButtonByKey(tester, 'run-timer-appbar-back-button',
