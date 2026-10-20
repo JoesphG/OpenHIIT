@@ -3,9 +3,10 @@ import 'package:flutter/material.dart';
 class RunTimerAppBar extends StatelessWidget {
   final String intervalLabel;
   final String? setLabel;
+  final String? totalLabel;
 
   const RunTimerAppBar(
-      {super.key, required this.intervalLabel, this.setLabel});
+      {super.key, required this.intervalLabel, this.setLabel, this.totalLabel});
 
   @override
   Widget build(BuildContext context) {
@@ -33,23 +34,35 @@ class RunTimerAppBar extends StatelessWidget {
             )),
       ),
       const Spacer(),
-      Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Text(
-            intervalLabel,
-            style: const TextStyle(color: Colors.white, fontSize: 30),
-          ),
-          if (setLabel != null && setLabel!.isNotEmpty)
+      FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
             Text(
-              setLabel!,
-              style: TextStyle(
-                  color: Colors.white.withOpacity(.9),
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600),
+              intervalLabel,
+              style: const TextStyle(color: Colors.white, fontSize: 30),
             ),
-        ],
+            if (setLabel != null && setLabel!.isNotEmpty)
+              Text(
+                setLabel!,
+                style: TextStyle(
+                    color: Colors.white.withValues(alpha: .9),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600),
+              ),
+            if (totalLabel != null && totalLabel!.isNotEmpty)
+              Text(
+                totalLabel!,
+                key: const Key("run-timer-total-label"),
+                style: TextStyle(
+                    color: Colors.white.withValues(alpha: .9),
+                    fontSize: 16,
+                    fontFeatures: const [FontFeature.tabularFigures()]),
+              ),
+          ],
+        ),
       ),
       const Spacer(),
       const SizedBox(

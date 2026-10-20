@@ -113,7 +113,18 @@ class _SoundTabState extends State<SoundTab> {
           onChanged: (value) =>
               provider.setTimerSoundSettingPart(endSound: value),
         ),
-        SizedBox(height: 80),
+        const SizedBox(height: 16),
+        if (provider.timer.timeSettings.breakTime > 0 &&
+            provider.timer.timeSettings.restarts > 0) ...[
+          _buildSoundDropdown(
+            keyName: "break-sound",
+            label: "Break Sound",
+            initialValue: provider.timer.soundSettings.breakSound,
+            onChanged: (value) =>
+                provider.setTimerSoundSettingPart(breakSound: value),
+          ),
+          const SizedBox(height: 80),
+        ]
       ],
     );
   }

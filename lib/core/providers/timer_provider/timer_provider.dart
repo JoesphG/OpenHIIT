@@ -1,6 +1,5 @@
 import 'package:background_hiit_timer/models/interval_type.dart';
 import 'package:flutter/material.dart';
-import 'package:logger/logger.dart';
 import 'package:openhiit/core/db/repositories/deprecated_workout_repository.dart';
 import 'package:openhiit/core/db/repositories/interval_repository.dart';
 import 'package:openhiit/core/db/repositories/timer_repository.dart';
@@ -11,6 +10,7 @@ import 'package:openhiit/core/providers/interval_provider/interval_provider.dart
 import 'package:openhiit/core/providers/timer_provider/migrations/migration_1.dart';
 import 'package:openhiit/core/providers/timer_provider/migrations/migration_2.dart';
 import 'package:openhiit/core/models/timer_type.dart';
+import 'package:openhiit/core/providers/timer_provider/migrations/migration_3.dart';
 import 'package:openhiit/core/utils/interval_calculation.dart';
 import 'package:uuid/uuid.dart';
 
@@ -31,10 +31,6 @@ class TimerProvider extends ChangeNotifier {
 
   late IntervalProvider _intervalProvider;
 
-  var logger = Logger(
-    printer: JsonLogPrinter('TimerProvider'),
-  );
-
   void setIntervalProvider(IntervalProvider provider) {
     _intervalProvider = provider;
   }
@@ -44,18 +40,22 @@ class TimerProvider extends ChangeNotifier {
       final workouts = await _workoutRepository.getAllWorkouts();
 
       if (workouts.isNotEmpty) {
-        logger.i("Migrating old workouts to timers and intervals...");
+        Log.info("Migrating old workouts to timers and intervals...");
         await workoutsMigration(
             workouts, _intervalRepository, _timerRepository);
-        logger.i("Migration completed successfully.");
+        Log.info("Migration completed successfully.");
 
         try {
           await _workoutRepository.deleteAllWorkouts();
-          logger.i("Old workouts deleted after migration.");
+          Log.info("Old workouts deleted after migration.");
         } catch (error) {
-          logger.e("Error deleting old workouts: $error");
+          Log.error("Error deleting old workouts: $error");
         }
       }
+
+      // Load timers
+      _timers = await _timerRepository.getAllTimers();
+      _timers.sort((a, b) => a.timerIndex.compareTo(b.timerIndex));
 
       // Run warmup migration
       await warmupMigration(
@@ -65,14 +65,19 @@ class TimerProvider extends ChangeNotifier {
         _timerTimeSettingsRepository,
       );
 
-      // Load timers
-      _timers = await _timerRepository.getAllTimers();
-      _timers.sort((a, b) => a.timerIndex.compareTo(b.timerIndex));
+      // Run break sound migration
+      await breakSoundMigration(
+        _timers,
+        _timerRepository,
+        _timerTimeSettingsRepository,
+        _timerSoundSettingsRepository,
+      );
+
       notifyListeners();
 
       return _timers;
     } catch (error, stackTrace) {
-      logger.e("Error loading timers: $error\n$stackTrace");
+      Log.error("Error loading timers: $error\n$stackTrace");
       rethrow; // rethrow so FutureBuilder sees it and shows error UI
     }
   }
@@ -115,21 +120,21 @@ class TimerProvider extends ChangeNotifier {
     if (index != -1) {
       _timers[index] = timer;
       int timerRowsUpdated = await _timerRepository.updateTimer(timer);
-      logger.d("Updated $timerRowsUpdated rows in timer table.");
+      Log.debug("Updated $timerRowsUpdated rows in timer table.");
       int timeSettingsRowsUpdated = await _timerTimeSettingsRepository
           .updateTimeSettings(timer.timeSettings);
-      logger.d(
+      Log.debug(
           "Updated $timeSettingsRowsUpdated rows in timer_time_settings table.");
       int soundSettingsRowsUpdated = await _timerSoundSettingsRepository
           .updateSoundSettings(timer.soundSettings);
-      logger.d(
+      Log.debug(
           "Updated $soundSettingsRowsUpdated rows in timer_sound_settings table.");
       await _intervalProvider.deleteIntervals(timer.id);
       await pushIntervalsFromTimer(timer);
-      logger.i("Timer with id ${timer.id} updated.");
+      Log.info("Timer with id ${timer.id} updated.");
       notifyListeners();
     } else {
-      logger.w("Timer with id ${timer.id} not found for update.");
+      Log.warning("Timer with id ${timer.id} not found for update.");
     }
   }
 
@@ -146,7 +151,7 @@ class TimerProvider extends ChangeNotifier {
         notifyListeners();
       }
     } catch (error) {
-      logger.e("Error generating intervals: $error");
+      Log.error("Error generating intervals: $error");
     }
   }
 

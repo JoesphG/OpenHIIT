@@ -1,7 +1,6 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
-import 'package:logger/logger.dart';
 import 'package:openhiit/core/logs/logs.dart';
 import 'package:openhiit/core/providers/timer_provider/timer_provider.dart';
 import 'package:openhiit/features/reorder_timers/ui/widgets/tile.dart';
@@ -16,12 +15,14 @@ class ListTimersReorderableList extends StatefulWidget {
   final List<TimerType> items;
   final TimerTapCallback? onTap;
   final void Function(List<TimerType>)? onReorderCompleted;
+  final void Function(TimerType)? onListEmpty;
 
   const ListTimersReorderableList({
     super.key,
     required this.items,
     this.onTap,
     this.onReorderCompleted,
+    this.onListEmpty,
   });
 
   @override
@@ -33,19 +34,17 @@ class _ListTimersReorderableListState extends State<ListTimersReorderableList> {
   late List<TimerType> _items;
   TimerProvider? _timerProvider;
 
-  var logger = Logger(
-    printer: JsonLogPrinter('ReorderableList'),
-  );
-
   @override
   void initState() {
     super.initState();
+    Log.debug(
+        "initializing ListTimersReorderableList with ${widget.items.length} items");
     _items = List<TimerType>.from(widget.items);
     _timerProvider = Provider.of<TimerProvider>(context, listen: false);
   }
 
   void _onReorder(int oldIndex, int newIndex) {
-    logger.i("Reordering item from $oldIndex to $newIndex");
+    Log.debug("reordering item from $oldIndex to $newIndex");
 
     setState(() {
       if (newIndex > oldIndex) {
@@ -58,6 +57,49 @@ class _ListTimersReorderableListState extends State<ListTimersReorderableList> {
     if (widget.onReorderCompleted != null) {
       widget.onReorderCompleted!(_items);
     }
+  }
+
+  void _onDelete(TimerType item) {
+    Log.debug("deleting item ${item.name}");
+
+    bool undone = false;
+
+    setState(() {
+      _items.remove(item);
+    });
+
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context)
+        .showSnackBar(
+          SnackBar(
+            behavior: SnackBarBehavior.floating,
+            content: Text('${item.name} deleted'),
+            duration: const Duration(seconds: 2),
+            persist: false,
+            action: SnackBarAction(
+              label: 'Undo',
+              onPressed: () {
+                undone = true;
+                setState(() {
+                  final index = item.timerIndex.clamp(0, _items.length);
+                  _items.insert(index, item);
+                  _timerProvider?.updateTimerOrder(_items);
+                });
+              },
+            ),
+          ),
+        )
+        .closed
+        .then((reason) async {
+      if (!undone) {
+        await _timerProvider?.deleteTimer(item);
+        if (_items.isEmpty && reason != SnackBarClosedReason.hide) {
+          widget.onListEmpty?.call(item);
+        }
+
+        Log.debug("deleted timer '${item.name}'");
+      }
+    });
   }
 
   Widget proxyDecorator(Widget child, int index, Animation<double> animation) {
@@ -79,10 +121,24 @@ class _ListTimersReorderableListState extends State<ListTimersReorderableList> {
       proxyDecorator: proxyDecorator,
       children: [
         for (final item in _items)
-          ListTimersTile(
+          Dismissible(
             key: ValueKey("${item.name}-${item.timerIndex}"),
-            timer: item,
-            onTap: widget.onTap != null ? () => widget.onTap!(item) : null,
+            direction: DismissDirection.endToStart,
+            onDismissed: (_) => _onDelete(item),
+            background: Card(
+              color: Colors.red,
+              margin: const EdgeInsets.all(4.0),
+              child: Container(
+                alignment: Alignment.centerRight,
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: const Icon(Icons.delete, color: Colors.white),
+              ),
+            ),
+            child: ListTimersTile(
+              key: ValueKey("tile-${item.name}-${item.timerIndex}"),
+              timer: item,
+              onTap: widget.onTap != null ? () => widget.onTap!(item) : null,
+            ),
           ),
       ],
     );

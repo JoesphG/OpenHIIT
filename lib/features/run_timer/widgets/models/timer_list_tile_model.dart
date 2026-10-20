@@ -36,9 +36,16 @@ class TimerListTileModel<E> {
       return "";
     }
     final remaining = (totalSets - set);
-    final remainingLabel =
-        remaining > 0 ? "$remaining left" : "last set";
+    final remainingLabel = remaining > 0 ? "$remaining left" : "last set";
     return "Set $set of $totalSets • $remainingLabel";
+  }
+
+  /// Label for the rest between sets, announcing the set that follows it.
+  String nextSetString() {
+    if (action != "Rest between sets" || totalSets <= 1) {
+      return "";
+    }
+    return "Next: Set $set of $totalSets";
   }
 
   String timeString() {

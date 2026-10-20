@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_material_color_picker/flutter_material_color_picker.dart';
-import 'package:logger/logger.dart';
 import 'package:openhiit/core/logs/logs.dart';
 import 'package:openhiit/core/providers/timer_creation_provider/timer_creation_provider.dart';
 import 'package:openhiit/features/edit_timer/ui/widgets/start_save_toggle.dart';
@@ -19,7 +18,7 @@ class GeneralTab extends StatelessWidget {
 
   final bool editing;
 
-  GeneralTab(
+  const GeneralTab(
       {super.key,
       required this.nameController,
       required this.activeIntervalsController,
@@ -29,10 +28,6 @@ class GeneralTab extends StatelessWidget {
       required this.onUnitToggle,
       required this.scrollController,
       this.editing = false});
-
-  final logger = Logger(
-    printer: JsonLogPrinter('GeneralTab'),
-  );
 
   @override
   Widget build(BuildContext context) {
@@ -58,7 +53,7 @@ class GeneralTab extends StatelessWidget {
                 onChanged: (value) {
                   provider.setTimerName(value);
                   onEdited(StartSaveState.save);
-                  logger.d("Timer name changed to $value");
+                  Log.debug("Timer name changed to $value");
                 },
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
@@ -89,9 +84,10 @@ class GeneralTab extends StatelessWidget {
                           onMainColorChange: (Color? value) {
                             if (value != null) {
                               Navigator.pop(context); // Close the dialog
-                              provider.setTimerColor(value.value);
+                              provider.setTimerColor(value.toARGB32());
                               onEdited(StartSaveState.save);
-                              logger.d("Timer color changed to ${value.value}");
+                              Log.debug(
+                                  "Timer color changed to ${value.toARGB32()}");
                             }
                           },
                           allowShades: false,
@@ -171,7 +167,7 @@ class GeneralTab extends StatelessWidget {
                             provider.setTimerShowMinutes(1);
                             onEdited(StartSaveState.save);
                             onUnitToggle(true);
-                            logger.d("Timer display changed to Minutes");
+                            Log.debug("Timer display changed to Minutes");
                           },
                           child: const Text('Minutes'),
                         ),
@@ -182,7 +178,7 @@ class GeneralTab extends StatelessWidget {
                             provider.setTimerShowMinutes(0);
                             onEdited(StartSaveState.save);
                             onUnitToggle(false);
-                            logger.d("Timer display changed to Seconds");
+                            Log.debug("Timer display changed to Seconds");
                           },
                           child: const Text('Seconds'),
                         ),
@@ -223,7 +219,7 @@ class GeneralTab extends StatelessWidget {
                       provider.setActiveIntervals(int.tryParse(value) ?? 0);
                     }
                     onEdited(StartSaveState.save);
-                    logger.d("Active intervals changed to $value");
+                    Log.debug("Active intervals changed to $value");
                   },
                 ),
               ),
@@ -243,7 +239,7 @@ class GeneralTab extends StatelessWidget {
                   onChanged: (value) {
                     provider.setTimerTimeSettingPart(workTime: value);
                     onEdited(StartSaveState.save);
-                    logger.d("Work time changed to $value");
+                    Log.debug("Work time changed to $value");
                   },
                 ),
               ),
@@ -263,7 +259,7 @@ class GeneralTab extends StatelessWidget {
                   onChanged: (value) {
                     provider.setTimerTimeSettingPart(restTime: value);
                     onEdited(StartSaveState.save);
-                    logger.d("Rest time changed to $value");
+                    Log.debug("Rest time changed to $value");
                   },
                 ),
               ),
@@ -284,7 +280,7 @@ class GeneralTab extends StatelessWidget {
                   onChanged: (value) {
                     provider.setTimerTimeSettingPart(getReadyTime: value);
                     onEdited(StartSaveState.save);
-                    logger.d("Get ready time changed to $value");
+                    Log.debug("Get ready time changed to $value");
                   },
                 ),
               ),
@@ -304,7 +300,7 @@ class GeneralTab extends StatelessWidget {
                   onChanged: (value) {
                     provider.setTimerTimeSettingPart(warmupTime: value);
                     onEdited(StartSaveState.save);
-                    logger.d("Warm-up time changed to $value");
+                    Log.debug("Warm-up time changed to $value");
                   },
                 ),
               ),
@@ -324,38 +320,39 @@ class GeneralTab extends StatelessWidget {
                   onChanged: (value) {
                     provider.setTimerTimeSettingPart(cooldownTime: value);
                     onEdited(StartSaveState.save);
-                    logger.d("Cool-down time changed to $value");
+                    Log.debug("Cool-down time changed to $value");
                   },
                 ),
               ),
             ),
             ListTile(
+              key: const Key("restarts"),
               title: const Text('Sets'),
               subtitle: const Text('Optional, total sets to run'),
               leading: const Icon(Icons.replay),
               trailing: SizedBox(
                 width: 80,
                 child: TextFormField(
-                  key: const Key("restarts"),
                   controller: restartsController,
                   decoration: inputDecoration,
                   maxLength: 3,
                   style: const TextStyle(fontSize: 30),
                   textAlign: TextAlign.end,
                   keyboardType: TextInputType.number,
-                  validator: (value) => null,
                   onChanged: (value) {
+                    // The field takes total sets; restarts is sets - 1.
                     final sets = value.isEmpty ? 0 : int.tryParse(value) ?? 0;
-                    provider.setTimerTimeSettingPart(restarts: sets);
+                    final restarts = sets > 1 ? sets - 1 : 0;
+                    provider.setTimerTimeSettingPart(restarts: restarts);
                     onEdited(StartSaveState.save);
-                    logger.d("Sets changed to $sets");
+                    Log.debug("Sets changed to $sets ($restarts restarts)");
 
-                    // If sets = 0, force breakTime = 0
-                    if (sets == 0) {
+                    // A single set has no rest between sets.
+                    if (restarts == 0) {
                       provider.setTimerTimeSettingPart(breakTime: 0);
                       timeSettingsControllers['break']?.setTotalSeconds(0);
-                      logger.d(
-                          "Rest between sets forced to 0 because sets = 0");
+                      Log.debug(
+                          "Rest between sets forced to 0 because sets <= 1");
                     }
                   },
                 ),
@@ -378,7 +375,7 @@ class GeneralTab extends StatelessWidget {
                   onChanged: (value) {
                     provider.setTimerTimeSettingPart(breakTime: value);
                     onEdited(StartSaveState.save);
-                    logger.d("Rest between sets time changed to $value");
+                    Log.debug("Rest between sets time changed to $value");
                   },
                 ),
               ),

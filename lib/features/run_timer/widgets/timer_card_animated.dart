@@ -49,6 +49,12 @@ class TimerCardItemAnimated extends StatelessWidget {
   }
 
   double calcHeight(String action) {
+    // Leave room for the "Next: Set x of y" line under the action.
+    final subtitle = item.nextSetString().isNotEmpty ? 20 * sizeMultiplier : 0;
+    return _actionHeight(action) + subtitle;
+  }
+
+  double _actionHeight(String action) {
     if (action.length > 20) {
       if (action.length > 30) {
         return 110 * sizeMultiplier;
@@ -123,23 +129,27 @@ class TimerCardItemAnimated extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          AutoSizeText(
-                            item.action,
-                            maxLines: 2,
-                            minFontSize: 14,
-                            maxFontSize: 28,
-                            overflow: TextOverflow.ellipsis,
-                            stepGranularity: 1,
-                            style: TextStyle(fontSize: 28, color: fontColor),
+                          Flexible(
+                            child: AutoSizeText(
+                              item.action,
+                              maxLines: 2,
+                              minFontSize: 14,
+                              maxFontSize: 28,
+                              overflow: TextOverflow.ellipsis,
+                              stepGranularity: 1,
+                              style: TextStyle(fontSize: 28, color: fontColor),
+                            ),
                           ),
-                          if (item.setString().isNotEmpty)
+                          if (item.nextSetString().isNotEmpty)
                             Padding(
                               padding: const EdgeInsets.only(top: 4.0),
                               child: Text(
-                                item.setString(),
+                                item.nextSetString(),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                     fontSize: 14,
-                                    color: fontColor.withOpacity(0.8),
+                                    color: fontColor.withValues(alpha: 0.8),
                                     fontWeight: FontWeight.w600),
                               ),
                             ),

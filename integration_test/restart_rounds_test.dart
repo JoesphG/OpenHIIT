@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:openhiit/core/providers/theme_provider/theme_provider.dart';
 import 'package:openhiit/main.dart';
+import 'package:provider/provider.dart';
 
 import 'utils/enter_data.dart';
 import 'utils/pump_and_settle.dart';
@@ -12,8 +14,16 @@ void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets('add_and_remove_restart_rounds', (WidgetTester tester) async {
-    await tester.pumpWidget(WorkoutTimer());
+    await tester.pumpWidget(
+      ChangeNotifierProvider<ThemeProvider>(
+        create: (_) => ThemeProvider(),
+        child: const WorkoutTimer(),
+      ),
+    );
     await tester.pumpAndSettle();
+
+    // Tap "Got it!" to dismiss the welcome screen.
+    await tapGotItButton(tester, binding);
 
     // Create a new timer for restart testing.
     await tapButtonByKey(
@@ -36,9 +46,9 @@ void main() {
     await tapButtonByKey(
         tester, 'Restart Tester-0', '9_restart_open', binding, false);
 
-    // Add restart rounds.
+    // Add restart rounds (3 sets = 2 restarts).
     await enterTextByKey(
-        tester, 'restarts', '2', '10_restart_add-rounds', binding);
+        tester, 'restarts', '3', '10_restart_add-rounds', binding);
     await closeKeyboard(tester, false);
 
     // Verify the break TextFormField is active (enabled for input).
@@ -52,8 +62,8 @@ void main() {
     // Reopen to verify restarts updated.
     await tapButtonByKey(
         tester, 'Restart Tester-0', '14_restart_reopen', binding, false);
-    expect(find.text('2'), findsWidgets,
-        reason: 'Restart count not updated to 2 after adding');
+    expect(find.text('3'), findsWidgets,
+        reason: 'Set count not updated to 3 after adding');
     expect(find.text('120'), findsWidgets,
         reason: 'Break time not updated to 120 after adding');
 
@@ -79,7 +89,8 @@ void main() {
         screenShotName: '19_advanced-timer_work-interval-2-iteration-1');
 
     expect(find.textContaining("Rest between sets"), findsNothing,
-        reason: 'Rest-between-sets interval found when it should not be present');
+        reason:
+            'Rest-between-sets interval found when it should not be present');
 
     // Exit the running timer.
     await tapButtonByKey(tester, 'run-timer-appbar-back-button',
