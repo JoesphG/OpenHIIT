@@ -50,6 +50,13 @@ class MainActivity : FlutterActivity(), MessageClient.OnMessageReceivedListener 
     }
 
     override fun onMessageReceived(event: MessageEvent) {
+        if (event.path == PING_PATH) {
+            // Clock sync: echo the watch's send time with ours, straight away.
+            val reply = "${String(event.data)}:${System.currentTimeMillis()}"
+            Wearable.getMessageClient(this)
+                .sendMessage(event.sourceNodeId, PONG_PATH, reply.toByteArray())
+            return
+        }
         if (event.path != COMMAND_PATH) {
             return
         }
@@ -92,5 +99,7 @@ class MainActivity : FlutterActivity(), MessageClient.OnMessageReceivedListener 
         private const val TAG = "WearSync"
         private const val CHANNEL = "openhiit/wear"
         private const val COMMAND_PATH = "/openhiit/command"
+        private const val PING_PATH = "/openhiit/ping"
+        private const val PONG_PATH = "/openhiit/pong"
     }
 }

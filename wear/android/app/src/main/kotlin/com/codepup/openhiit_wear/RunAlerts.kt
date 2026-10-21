@@ -9,6 +9,7 @@ import org.json.JSONObject
 /** Starts or stops [RunAlertService] to match each run snapshot. */
 object RunAlerts {
     private const val TAG = "OpenHiitWear"
+    private var lastMeasuredRunId: String? = null
 
     fun sync(context: Context, json: String?) {
         val active = try {
@@ -20,6 +21,12 @@ object RunAlerts {
             context.stopService(Intent(context, RunAlertService::class.java))
             OngoingRun.cancel(context)
             return
+        }
+        // Measure the clock offset afresh for each new run.
+        val runId = JSONObject(json!!).optString("runId")
+        if (runId != lastMeasuredRunId) {
+            lastMeasuredRunId = runId
+            ClockSync.measure(context)
         }
         try {
             ContextCompat.startForegroundService(

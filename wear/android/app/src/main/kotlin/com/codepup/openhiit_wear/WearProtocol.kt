@@ -14,6 +14,10 @@ object WearProtocol {
     /** Data item the phone writes with its saved timers, for starting from the watch. */
     const val TIMERS_PATH = "/openhiit/timers"
 
+    /** Clock sync: the watch pings, the phone replies with its time. */
+    const val PING_PATH = "/openhiit/ping"
+    const val PONG_PATH = "/openhiit/pong"
+
     /** Message path for commands sent from the watch to the phone. */
     const val COMMAND_PATH = "/openhiit/command"
 

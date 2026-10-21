@@ -2,6 +2,7 @@ package com.codepup.openhiit_wear
 
 import com.google.android.gms.wearable.DataEvent
 import com.google.android.gms.wearable.DataEventBuffer
+import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.WearableListenerService
 
 /**
@@ -18,5 +19,11 @@ class RunListenerService : WearableListenerService() {
             return
         }
         RunAlerts.sync(this, WearProtocol.json(changed.last().dataItem))
+    }
+
+    override fun onMessageReceived(event: MessageEvent) {
+        if (event.path == WearProtocol.PONG_PATH) {
+            ClockSync.onPong(this, event.data)
+        }
     }
 }

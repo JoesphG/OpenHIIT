@@ -25,11 +25,13 @@ class RunAlertService : Service() {
     private lateinit var wakeLock: PowerManager.WakeLock
     private lateinit var sounds: SoundPool
     private val soundIds = mutableMapOf<String, Int>()
+    private var lastRun: JSONObject? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
+        running = true
         // Keep the CPU awake for the cues while the screen is off.
         wakeLock = (getSystemService(POWER_SERVICE) as PowerManager)
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "openhiit:run")
@@ -57,7 +59,7 @@ class RunAlertService : Service() {
         ServiceCompat.startForeground(
             this,
             OngoingRun.NOTIFICATION_ID,
-            OngoingRun.build(this, run ?: JSONObject()),
+            OngoingRun.build(this, run ?: lastRun ?: JSONObject()),
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
             } else {
@@ -65,15 +67,21 @@ class RunAlertService : Service() {
             },
         )
 
+        if (intent?.action == ACTION_RESCHEDULE) {
+            lastRun?.let { schedule(it) }
+            return START_NOT_STICKY
+        }
         if (run == null || !run.optBoolean("active")) {
             stopSelf()
         } else {
+            lastRun = run
             schedule(run)
         }
         return START_NOT_STICKY
     }
 
     override fun onDestroy() {
+        running = false
         handler.removeCallbacksAndMessages(null)
         if (wakeLock.isHeld) {
             wakeLock.release()
@@ -100,10 +108,12 @@ class RunAlertService : Service() {
             }
         }
 
-        val now = System.currentTimeMillis()
-        // Wall-clock end of the current interval; the watch's clock is synced
-        // from the phone.
-        var boundary = run.optLong("sentAt") + run.optLong("remainingMs")
+        // Snapshot times are on the phone's clock, so schedule on it too.
+        val now = ClockSync.phoneNow(this)
+        // End of the current interval, on the phone's clock, moved to when
+        // the phone's sounds are actually heard.
+        var boundary = run.optLong("sentAt") + run.optLong("remainingMs") +
+            PHONE_SOUND_DELAY_MS
         val last = intervals.length() - 1
         for (k in run.optInt("index")..last) {
             val interval = intervals.getJSONObject(k)
@@ -158,10 +168,32 @@ class RunAlertService : Service() {
     companion object {
         const val EXTRA_JSON = "json"
 
+        @Volatile
+        private var running = false
+        private const val ACTION_RESCHEDULE = "reschedule"
+
+        /** Re-times the cues after the clock offset changes, if running. */
+        fun reschedule(context: android.content.Context) {
+            if (!running) {
+                return
+            }
+            try {
+                context.startService(
+                    Intent(context, RunAlertService::class.java).setAction(ACTION_RESCHEDULE)
+                )
+            } catch (e: Exception) {
+                // Not running; the next snapshot schedules with the new offset.
+            }
+        }
+
         // Matches background_hiit_timer: countdown at 3.5/2.5/1.5s left and
         // the next interval's start sound at 0.7s left.
         private val COUNTDOWN_OFFSETS_MS = longArrayOf(3500, 2500, 1500)
         private const val START_OFFSET_MS = 700L
+
+        // The phone starts playing each cue about this long after its timer
+        // reaches it (measured on a Pixel 10 Pro XL), so match the sound.
+        private const val PHONE_SOUND_DELAY_MS = 120L
         private const val WAKE_GRACE_MS = 30_000L
     }
 }

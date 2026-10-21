@@ -66,8 +66,9 @@ class RunPosition {
     required this.done,
   });
 
-  /// Whole seconds left in the interval, rounded up so 0 means finished.
-  int get remainingSeconds => (remainingMs / 1000).ceil();
+  /// Whole seconds left in the interval, rounded to the nearest second
+  /// like the phone's display so the two show the same number.
+  int get remainingSeconds => (remainingMs / 1000).round();
 }
 
 /// A run published by the phone: the intervals plus where it was when sent.

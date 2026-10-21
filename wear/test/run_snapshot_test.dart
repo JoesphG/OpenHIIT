@@ -64,7 +64,8 @@ void main() {
         remainingMs: 4200,
       ).positionAt(sentAt.add(const Duration(minutes: 5)));
       expect(p.index, 0);
-      expect(p.remainingSeconds, 5);
+      // 4.2s left shows as 4, rounded like the phone.
+      expect(p.remainingSeconds, 4);
     });
 
     test('should finish after the last interval', () {

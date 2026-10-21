@@ -87,7 +87,10 @@ class _RunMirrorPageState extends State<RunMirrorPage> {
 
   bool? _screenOn;
 
-  DateTime _now() => widget.now?.call() ?? DateTime.now();
+  // Snapshots carry phone timestamps, so count on the phone's clock.
+  Duration _clockOffset = Duration.zero;
+
+  DateTime _now() => widget.now?.call() ?? DateTime.now().add(_clockOffset);
 
   @override
   void initState() {
@@ -106,7 +109,9 @@ class _RunMirrorPageState extends State<RunMirrorPage> {
       onTimers: _onTimers,
       onHeartRate: _onHeartRate,
       onRotary: _onRotary,
+      onClockOffset: _onClockOffset,
     );
+    WearBridge.getClockOffset().then(_onClockOffset);
     WearBridge.getState().then(_onState);
     WearBridge.getTimers().then(_onTimers);
     _ticker = Timer.periodic(const Duration(milliseconds: 200), (_) => _tick());
@@ -140,6 +145,10 @@ class _RunMirrorPageState extends State<RunMirrorPage> {
     if (mounted) {
       setState(() => _timers = timers);
     }
+  }
+
+  void _onClockOffset(int offsetMs) {
+    _clockOffset = Duration(milliseconds: offsetMs);
   }
 
   void _onRotary(double pixels) {

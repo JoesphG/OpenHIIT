@@ -66,7 +66,7 @@ object OngoingRun {
         val alert = isNewRun && !MainActivity.isForeground
 
         val paused = run.optBoolean("paused")
-        val remainingMs = remainingRunMs(run)
+        val remainingMs = remainingRunMs(context, run)
         // Status timers count on the elapsedRealtime clock.
         val endsAt = SystemClock.elapsedRealtime() + remainingMs
 
@@ -117,7 +117,7 @@ object OngoingRun {
     }
 
     /** Time left in the whole run, counted on from when the phone sent it. */
-    private fun remainingRunMs(run: JSONObject): Long {
+    private fun remainingRunMs(context: Context, run: JSONObject): Long {
         val intervals = run.optJSONArray("intervals") ?: return 0
         val index = run.optInt("index")
         var remaining = run.optLong("remainingMs")
@@ -125,7 +125,7 @@ object OngoingRun {
             remaining += intervals.getJSONObject(i).optLong("seconds") * 1000
         }
         if (!run.optBoolean("paused")) {
-            val sinceSent = System.currentTimeMillis() - run.optLong("sentAt")
+            val sinceSent = ClockSync.phoneNow(context) - run.optLong("sentAt")
             remaining -= sinceSent.coerceAtLeast(0)
         }
         return remaining.coerceAtLeast(0)

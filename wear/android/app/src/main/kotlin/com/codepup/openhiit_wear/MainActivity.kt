@@ -82,6 +82,7 @@ class MainActivity : FlutterActivity(), DataClient.OnDataChangedListener {
             when (call.method) {
                 "getState" -> fetch(WearProtocol.RUN_PATH) { result.success(it) }
                 "getTimers" -> fetch(WearProtocol.TIMERS_PATH) { result.success(it) }
+                "getClockOffset" -> result.success(ClockSync.offsetMs(this))
                 "command" -> {
                     sendCommand(call.arguments as String)
                     result.success(null)
@@ -108,6 +109,10 @@ class MainActivity : FlutterActivity(), DataClient.OnDataChangedListener {
     override fun onResume() {
         super.onResume()
         isForeground = true
+        ClockSync.onOffsetChanged = { offset ->
+            runOnUiThread { channel?.invokeMethod("clockOffset", offset) }
+        }
+        ClockSync.measure(this)
         startHeartRate()
         Wearable.getDataClient(this).addListener(this)
         // Catch up on anything published while we were in the background.
@@ -122,6 +127,7 @@ class MainActivity : FlutterActivity(), DataClient.OnDataChangedListener {
 
     override fun onPause() {
         isForeground = false
+        ClockSync.onOffsetChanged = null
         heartRate.stop()
         Wearable.getDataClient(this).removeListener(this)
         super.onPause()

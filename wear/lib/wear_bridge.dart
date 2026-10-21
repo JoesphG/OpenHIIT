@@ -12,6 +12,7 @@ class WearBridge {
     required void Function(String? json) onTimers,
     required void Function(double bpm) onHeartRate,
     required void Function(double pixels) onRotary,
+    required void Function(int offsetMs) onClockOffset,
   }) {
     _channel.setMethodCallHandler((call) async {
       switch (call.method) {
@@ -23,12 +24,18 @@ class WearBridge {
           onHeartRate((call.arguments as num).toDouble());
         case 'rotary':
           onRotary((call.arguments as num).toDouble());
+        case 'clockOffset':
+          onClockOffset((call.arguments as num).toInt());
       }
     });
   }
 
   /// The latest snapshot JSON, or null if the phone hasn't published one.
   static Future<String?> getState() => _invoke<String>('getState', null);
+
+  /// Phone time minus watch time in milliseconds, as last measured.
+  static Future<int> getClockOffset() async =>
+      (await _invoke<num>('getClockOffset', null))?.toInt() ?? 0;
 
   /// The phone's timer list JSON, or null if it hasn't published one.
   static Future<String?> getTimers() => _invoke<String>('getTimers', null);
