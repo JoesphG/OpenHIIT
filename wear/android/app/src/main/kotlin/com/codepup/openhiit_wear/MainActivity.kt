@@ -1,13 +1,9 @@
 package com.codepup.openhiit_wear
 
 import android.Manifest
-import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import android.os.VibrationEffect
-import android.os.Vibrator
-import android.os.VibratorManager
 import android.util.Log
 import android.view.InputDevice
 import android.view.MotionEvent
@@ -91,7 +87,7 @@ class MainActivity : FlutterActivity(), DataClient.OnDataChangedListener {
                     result.success(null)
                 }
                 "vibrate" -> {
-                    vibrate(call.arguments as String)
+                    Haptics.vibrate(this, call.arguments as String)
                     result.success(null)
                 }
                 "keepScreenOn" -> {
@@ -112,11 +108,15 @@ class MainActivity : FlutterActivity(), DataClient.OnDataChangedListener {
     override fun onResume() {
         super.onResume()
         isForeground = true
-        RunListenerService.cancelNotification(this)
         startHeartRate()
         Wearable.getDataClient(this).addListener(this)
         // Catch up on anything published while we were in the background.
-        fetch(WearProtocol.RUN_PATH) { json -> channel?.invokeMethod("state", json) }
+        fetch(WearProtocol.RUN_PATH) { json ->
+            channel?.invokeMethod("state", json)
+            // Opening the app is allowed to start the run alerts, in case
+            // Android refused while it was closed.
+            RunAlerts.sync(this, json)
+        }
         fetch(WearProtocol.TIMERS_PATH) { json -> channel?.invokeMethod("timers", json) }
     }
 
@@ -178,22 +178,6 @@ class MainActivity : FlutterActivity(), DataClient.OnDataChangedListener {
                 }
             }
             .addOnFailureListener { Log.w(TAG, "Couldn't list phones", it) }
-    }
-
-    private fun vibrate(pattern: String) {
-        val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            (getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager)
-                .defaultVibrator
-        } else {
-            @Suppress("DEPRECATION")
-            getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-        }
-        val effect = when (pattern) {
-            "tick" -> VibrationEffect.createOneShot(60, VibrationEffect.DEFAULT_AMPLITUDE)
-            "done" -> VibrationEffect.createWaveform(longArrayOf(0, 300, 150, 300, 150, 600), -1)
-            else -> VibrationEffect.createOneShot(400, VibrationEffect.DEFAULT_AMPLITUDE)
-        }
-        vibrator.vibrate(effect)
     }
 
     private fun setKeepScreenOn(on: Boolean) {

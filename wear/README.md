@@ -14,8 +14,11 @@ change. The watch's pause, previous and next buttons control the phone.
   (`lib/run_snapshot.dart`), so nothing is sent on every tick.
 - Watch buttons send messages back to the phone, which applies them to the
   real timer and publishes a fresh snapshot.
-- If the watch app is closed when a timer starts, `RunListenerService` posts a
-  notification that opens it.
+- While a run is active, `OngoingRun` keeps an Ongoing Activity up, so the
+  OpenHIIT icon sits on the watch face and in recents to get back into the run.
+- When nothing is running, the watch lists the phone's timers. Tapping one
+  asks the phone to start it; the phone app must be open (it can be locked
+  or in the background), as Android won't let it open itself.
 - Heart rate comes from Wear OS Health Services and is only measured while
   the app is on screen.
 

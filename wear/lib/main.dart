@@ -85,11 +85,6 @@ class _RunMirrorPageState extends State<RunMirrorPage> {
   int? _bpm;
   DateTime? _bpmAt;
 
-  // Haptics are driven by the local countdown, so remember what has buzzed.
-  String? _runId;
-  int? _lastIndex;
-  int? _lastTickSecond;
-  bool _doneBuzzed = false;
   bool? _screenOn;
 
   DateTime _now() => widget.now?.call() ?? DateTime.now();
@@ -188,10 +183,9 @@ class _RunMirrorPageState extends State<RunMirrorPage> {
 
   void _tick() {
     final snapshot = _snapshot;
-    var running = snapshot != null && snapshot.active;
+    final running = snapshot != null && snapshot.active;
     var position = running ? snapshot.positionAt(_now()) : null;
     if (position != null && snapshot!.isStale(position)) {
-      running = false;
       position = null;
     }
     final live = position != null && !position.done;
@@ -216,46 +210,8 @@ class _RunMirrorPageState extends State<RunMirrorPage> {
       WearBridge.keepScreenOn(live);
     }
 
-    if (running) {
-      _buzz(snapshot!, position!);
-    }
     if (mounted) {
       setState(() {});
-    }
-  }
-
-  void _buzz(RunSnapshot snapshot, RunPosition position) {
-    if (snapshot.runId != _runId) {
-      // New run: start quietly at its current position.
-      _runId = snapshot.runId;
-      _lastIndex = position.index;
-      _lastTickSecond = position.remainingSeconds;
-      _doneBuzzed = position.done;
-      return;
-    }
-
-    if (position.done) {
-      if (!_doneBuzzed) {
-        _doneBuzzed = true;
-        WearBridge.vibrate('done');
-      }
-      return;
-    }
-    _doneBuzzed = false;
-
-    if (position.index != _lastIndex) {
-      _lastIndex = position.index;
-      _lastTickSecond = position.remainingSeconds;
-      WearBridge.vibrate('change');
-      return;
-    }
-
-    final second = position.remainingSeconds;
-    if (second != _lastTickSecond) {
-      _lastTickSecond = second;
-      if (!snapshot.paused && second >= 1 && second <= 3) {
-        WearBridge.vibrate('tick');
-      }
     }
   }
 

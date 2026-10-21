@@ -186,6 +186,10 @@ class WearSync {
             'set': tiles[i].set,
             'totalSets': tiles[i].totalSets,
             'kind': intervals[i].name,
+            // Sound names, so the watch can play the same alerts.
+            'startSound': intervals[i].startSound,
+            'countdownSound': intervals[i].countdownSound,
+            'endSound': intervals[i].endSound,
           },
       ],
     };

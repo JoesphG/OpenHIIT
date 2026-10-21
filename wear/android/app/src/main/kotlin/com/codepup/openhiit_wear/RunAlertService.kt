@@ -1,0 +1,160 @@
+package com.codepup.openhiit_wear
+
+import android.app.Service
+import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.media.AudioAttributes
+import android.media.SoundPool
+import android.os.Build
+import android.os.Handler
+import android.os.IBinder
+import android.os.Looper
+import android.os.PowerManager
+import androidx.core.app.ServiceCompat
+import org.json.JSONObject
+
+/**
+ * Plays the run's countdown haptics and alert sounds on the watch, whether or
+ * not the app is open.
+ *
+ * Each snapshot from the phone reschedules the cues from its interval
+ * timings, so they stay in step with the phone's timer.
+ */
+class RunAlertService : Service() {
+    private val handler = Handler(Looper.getMainLooper())
+    private lateinit var wakeLock: PowerManager.WakeLock
+    private lateinit var sounds: SoundPool
+    private val soundIds = mutableMapOf<String, Int>()
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        // Keep the CPU awake for the cues while the screen is off.
+        wakeLock = (getSystemService(POWER_SERVICE) as PowerManager)
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "openhiit:run")
+            .apply { setReferenceCounted(false) }
+        sounds = SoundPool.Builder()
+            .setMaxStreams(2)
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    // The alarm stream stays audible mid-workout.
+                    .setUsage(AudioAttributes.USAGE_ALARM)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build()
+            )
+            .build()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val run = try {
+            intent?.getStringExtra(EXTRA_JSON)?.let { JSONObject(it) }
+        } catch (e: Exception) {
+            null
+        }
+
+        // Must be called promptly after startForegroundService.
+        ServiceCompat.startForeground(
+            this,
+            OngoingRun.NOTIFICATION_ID,
+            OngoingRun.build(this, run ?: JSONObject()),
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            } else {
+                0
+            },
+        )
+
+        if (run == null || !run.optBoolean("active")) {
+            stopSelf()
+        } else {
+            schedule(run)
+        }
+        return START_NOT_STICKY
+    }
+
+    override fun onDestroy() {
+        handler.removeCallbacksAndMessages(null)
+        if (wakeLock.isHeld) {
+            wakeLock.release()
+        }
+        sounds.release()
+        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        super.onDestroy()
+    }
+
+    private fun schedule(run: JSONObject) {
+        handler.removeCallbacksAndMessages(null)
+        val intervals = run.optJSONArray("intervals") ?: return
+        if (run.optBoolean("paused") || intervals.length() == 0) {
+            if (wakeLock.isHeld) {
+                wakeLock.release()
+            }
+            return
+        }
+
+        for (i in 0 until intervals.length()) {
+            val interval = intervals.getJSONObject(i)
+            listOf("startSound", "countdownSound", "endSound").forEach {
+                preload(interval.optString(it))
+            }
+        }
+
+        val now = System.currentTimeMillis()
+        // Wall-clock end of the current interval; the watch's clock is synced
+        // from the phone.
+        var boundary = run.optLong("sentAt") + run.optLong("remainingMs")
+        val last = intervals.length() - 1
+        for (k in run.optInt("index")..last) {
+            val interval = intervals.getJSONObject(k)
+            if (interval.optLong("seconds") >= 4) {
+                for (secondsLeft in 3 downTo 1) {
+                    at(boundary - secondsLeft * 1000L, now) {
+                        Haptics.vibrate(this, "tick")
+                        play(interval.optString("countdownSound"))
+                    }
+                }
+            }
+            if (k == last) {
+                at(boundary, now) {
+                    Haptics.vibrate(this, "done")
+                    play(interval.optString("endSound"))
+                }
+            } else {
+                val next = intervals.getJSONObject(k + 1)
+                at(boundary, now) {
+                    Haptics.vibrate(this, "change")
+                    play(next.optString("startSound"))
+                }
+                boundary += next.optLong("seconds") * 1000
+            }
+        }
+        wakeLock.acquire((boundary - now).coerceAtLeast(0) + WAKE_GRACE_MS)
+    }
+
+    private fun at(wallTime: Long, now: Long, cue: () -> Unit) {
+        val delay = wallTime - now
+        if (delay >= 0) {
+            handler.postDelayed(cue, delay)
+        }
+    }
+
+    private fun preload(name: String) {
+        if (name.isEmpty() || name == "none" || soundIds.containsKey(name)) {
+            return
+        }
+        val resId = resources.getIdentifier(name.replace('-', '_'), "raw", packageName)
+        if (resId != 0) {
+            soundIds[name] = sounds.load(this, resId, 1)
+        }
+    }
+
+    private fun play(name: String) {
+        soundIds[name]?.let { sounds.play(it, 1f, 1f, 1, 0, 1f) }
+    }
+
+    companion object {
+        const val EXTRA_JSON = "json"
+        private const val WAKE_GRACE_MS = 30_000L
+    }
+}
