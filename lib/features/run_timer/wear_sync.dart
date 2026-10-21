@@ -2,7 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:background_hiit_timer/models/interval_type.dart';
-import 'package:flutter/scheduler.dart';
+import 'package:background_hiit_timer/models/timer_state.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter/services.dart';
 import 'package:openhiit/core/logs/logs.dart';
 import 'package:openhiit/core/models/timer_type.dart';
@@ -102,6 +103,7 @@ class WearSync {
     required this.name,
     required this.intervals,
     required this.tiles,
+    this.timerUpdates,
   }) : runId = DateTime.now().microsecondsSinceEpoch.toString();
 
   final String runId;
@@ -111,36 +113,65 @@ class WearSync {
   /// Labels for every interval, in the same order as [intervals].
   final List<TimerListTileModel> tiles;
 
+  /// The background timer's state updates; defaults to the real service.
+  final Stream<Map<String, dynamic>?>? timerUpdates;
+
+  /// How long before an interval ends to send a fresh snapshot, so the
+  /// watch's countdown cues follow the phone's actual pace.
+  static const resyncBefore = 5000000;
+
   int? _lastIndex;
   bool? _lastPaused;
   bool? _lastEnded;
-  Timer? _framePump;
+  int? _resyncedIndex;
+  StreamSubscription<Map<String, dynamic>?>? _updates;
 
   /// Calls [onCommand] with "pause", "resume", "next" or "previous" when the
-  /// watch's buttons are pressed.
+  /// watch's buttons are pressed, and starts following the timer.
   void listen(void Function(String command) onCommand) {
     WearLink._runCommands = onCommand;
-    // Flutter stops building frames while the phone is locked, and the run
-    // only publishes from its build. Keep building once a second so the
-    // watch still hears about interval changes, e.g. a run started from the
-    // watch with the phone in a pocket.
-    _framePump = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (SchedulerBinding.instance.lifecycleState !=
-          AppLifecycleState.resumed) {
-        SchedulerBinding.instance.scheduleWarmUpFrame();
+    // Follow the background timer's own updates rather than the run screen's
+    // builds: they arrive every 100ms even while the phone is locked, so each
+    // snapshot is stamped with when the timer was actually at that point.
+    final updates = timerUpdates ?? FlutterBackgroundService().on('update');
+    _updates = updates.listen((data) {
+      if (data == null) {
+        return;
       }
+      final state = TimerState.fromMap(data);
+      update(
+        index: state.currentInterval,
+        remainingMicroSeconds: state.currentMicroSeconds,
+        paused: state.paused,
+        ended: state.status == 'End',
+      );
     });
   }
 
-  /// Publishes the run if the interval, pause or end state has changed.
+  /// Publishes the run when the interval, pause or end state changes, and
+  /// once more shortly before each interval ends.
   void update({
     required int index,
     required int remainingMicroSeconds,
     required bool paused,
     required bool ended,
+    DateTime? at,
   }) {
-    if (index == _lastIndex && paused == _lastPaused && ended == _lastEnded) {
+    final changed =
+        index != _lastIndex || paused != _lastPaused || ended != _lastEnded;
+    final resync = !changed &&
+        !paused &&
+        !ended &&
+        _resyncedIndex != index &&
+        remainingMicroSeconds <= resyncBefore;
+    if (!changed && !resync) {
       return;
+    }
+    if (changed) {
+      // An interval that starts inside the resync window needs no resync.
+      _resyncedIndex = remainingMicroSeconds <= resyncBefore ? index : null;
+    } else {
+      _resyncedIndex = index;
     }
     _lastIndex = index;
     _lastPaused = paused;
@@ -150,12 +181,13 @@ class WearSync {
       remainingMicroSeconds: remainingMicroSeconds,
       paused: paused,
       active: !ended,
+      at: at,
     ));
   }
 
   /// Tells the watch the run is over and stops taking its commands.
   void stop() {
-    _framePump?.cancel();
+    _updates?.cancel();
     WearLink._runCommands = null;
     WearLink._runEnded();
     _publish(snapshot(
@@ -167,6 +199,7 @@ class WearSync {
     required int remainingMicroSeconds,
     required bool paused,
     required bool active,
+    DateTime? at,
   }) {
     return {
       'runId': runId,
@@ -175,7 +208,7 @@ class WearSync {
       'paused': paused,
       'index': index,
       'remainingMs': remainingMicroSeconds ~/ 1000,
-      'sentAt': DateTime.now().millisecondsSinceEpoch,
+      'sentAt': (at ?? DateTime.now()).millisecondsSinceEpoch,
       'intervals': [
         for (var i = 0; i < intervals.length && i < tiles.length; i++)
           {

@@ -157,13 +157,6 @@ class RunTimerState extends State<RunTimer> {
             controller: _controller,
             intervals: widget.intervals,
             build: (_, TimerState timerState) {
-              _wear.update(
-                index: timerState.currentInterval,
-                remainingMicroSeconds: timerState.currentMicroSeconds,
-                paused: _paused,
-                ended: timerState.status == 'End',
-              );
-
               while (intervalTiles.length + timerState.currentInterval >
                   widget.intervals.length) {
                 removedTiles.insert(removedTiles.length,

@@ -107,24 +107,26 @@ class RunAlertService : Service() {
         val last = intervals.length() - 1
         for (k in run.optInt("index")..last) {
             val interval = intervals.getJSONObject(k)
+            // Same offsets as the phone's timer, which plays its cues early so
+            // they land on time despite audio latency.
             if (interval.optLong("seconds") >= 4) {
-                for (secondsLeft in 3 downTo 1) {
-                    at(boundary - secondsLeft * 1000L, now) {
+                for (offset in COUNTDOWN_OFFSETS_MS) {
+                    at(boundary - offset, now) {
                         Haptics.vibrate(this, "tick")
                         play(interval.optString("countdownSound"))
                     }
                 }
             }
             if (k == last) {
-                at(boundary, now) {
+                at(boundary - START_OFFSET_MS, now) {
                     Haptics.vibrate(this, "done")
                     play(interval.optString("endSound"))
                 }
             } else {
                 val next = intervals.getJSONObject(k + 1)
-                at(boundary, now) {
+                at(boundary - START_OFFSET_MS, now) {
                     Haptics.vibrate(this, "change")
-                    play(next.optString("startSound"))
+                    play(next.optString("startSound").ifEmpty { interval.optString("endSound") })
                 }
                 boundary += next.optLong("seconds") * 1000
             }
@@ -155,6 +157,11 @@ class RunAlertService : Service() {
 
     companion object {
         const val EXTRA_JSON = "json"
+
+        // Matches background_hiit_timer: countdown at 3.5/2.5/1.5s left and
+        // the next interval's start sound at 0.7s left.
+        private val COUNTDOWN_OFFSETS_MS = longArrayOf(3500, 2500, 1500)
+        private const val START_OFFSET_MS = 700L
         private const val WAKE_GRACE_MS = 30_000L
     }
 }

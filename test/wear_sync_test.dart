@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:background_hiit_timer/models/timer_state.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openhiit/core/models/timer_type.dart';
@@ -39,7 +41,7 @@ void main() {
     );
   }
 
-  WearSync buildSync() {
+  WearSync buildSync({Stream<Map<String, dynamic>?>? updates}) {
     final timer = TimerType.empty()
       ..name = 'Sets Tester'
       ..activeIntervals = 2
@@ -54,7 +56,8 @@ void main() {
     return WearSync(
         name: timer.name,
         intervals: intervals,
-        tiles: listItems(timer, intervals));
+        tiles: listItems(timer, intervals),
+        timerUpdates: updates ?? const Stream.empty());
   }
 
   test('should publish only when the interval or pause state changes', () {
@@ -74,6 +77,55 @@ void main() {
       [1, true],
     ]);
     expect(published[1]['remainingMs'], 8000);
+  });
+
+  test('should resync once shortly before each interval ends', () {
+    final sync = buildSync();
+    final at = DateTime(2026, 10, 21, 12);
+    sync.update(
+        index: 1, remainingMicroSeconds: 10000000, paused: false, ended: false);
+    sync.update(
+        index: 1, remainingMicroSeconds: 5100000, paused: false, ended: false);
+    sync.update(
+        index: 1,
+        remainingMicroSeconds: 5000000,
+        paused: false,
+        ended: false,
+        at: at);
+    sync.update(
+        index: 1, remainingMicroSeconds: 4000000, paused: false, ended: false);
+    // A 5s rest starts inside the window, so its start snapshot is enough.
+    sync.update(
+        index: 2, remainingMicroSeconds: 5000000, paused: false, ended: false);
+    sync.update(
+        index: 2, remainingMicroSeconds: 3000000, paused: false, ended: false);
+
+    expect(published.map((s) => [s['index'], s['remainingMs']]).toList(), [
+      [1, 10000],
+      [1, 5000],
+      [2, 5000],
+    ]);
+    expect(published[1]['sentAt'], at.millisecondsSinceEpoch);
+  });
+
+  test('should publish from the background timer updates', () async {
+    final updates = StreamController<Map<String, dynamic>?>.broadcast();
+    final sync = buildSync(updates: updates.stream)..listen((_) {});
+
+    updates.add(
+        TimerState(false, 'Work', 1, 8000000, 10000000, 80, false).toMap());
+    updates.add(
+        TimerState(false, 'Work', 1, 7900000, 10000000, 80, false).toMap());
+    updates
+        .add(TimerState(true, 'Work', 1, 7800000, 10000000, 80, false).toMap());
+    await Future<void>.delayed(Duration.zero);
+
+    expect(published.map((s) => [s['index'], s['remainingMs'], s['paused']]), [
+      [1, 8000, false],
+      [1, 7800, true],
+    ]);
+    sync.stop();
+    await updates.close();
   });
 
   test('should send interval labels and set numbers for the watch', () {
