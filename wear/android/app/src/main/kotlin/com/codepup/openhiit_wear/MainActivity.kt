@@ -8,7 +8,12 @@ import android.os.Bundle
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.util.Log
+import android.view.InputDevice
+import android.view.MotionEvent
+import android.view.ViewConfiguration
 import android.view.WindowManager
+import androidx.core.view.ViewConfigurationCompat
 import com.google.android.gms.wearable.DataClient
 import com.google.android.gms.wearable.DataEvent
 import com.google.android.gms.wearable.DataEventBuffer
@@ -20,8 +25,11 @@ import io.flutter.plugin.common.MethodChannel
 /**
  * Hosts the Flutter UI and bridges it to the Wearable Data Layer.
  *
- * Dart calls: getState, command(String), vibrate(String), keepScreenOn(Boolean).
+ * Dart calls: getState, getTimers, command(String), vibrate(String),
+ * keepScreenOn(Boolean).
  * Kotlin calls into Dart: state(String?) whenever the phone publishes a snapshot,
+ * timers(String?) when its timer list changes, rotary(Double) with crown
+ * scrolling in logical pixels,
  * and heartRate(Double) with live readings while the app is visible.
  */
 class MainActivity : FlutterActivity(), DataClient.OnDataChangedListener {
@@ -76,7 +84,8 @@ class MainActivity : FlutterActivity(), DataClient.OnDataChangedListener {
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, WearProtocol.CHANNEL)
         channel?.setMethodCallHandler { call, result ->
             when (call.method) {
-                "getState" -> fetchState { result.success(it) }
+                "getState" -> fetch(WearProtocol.RUN_PATH) { result.success(it) }
+                "getTimers" -> fetch(WearProtocol.TIMERS_PATH) { result.success(it) }
                 "command" -> {
                     sendCommand(call.arguments as String)
                     result.success(null)
@@ -107,7 +116,8 @@ class MainActivity : FlutterActivity(), DataClient.OnDataChangedListener {
         startHeartRate()
         Wearable.getDataClient(this).addListener(this)
         // Catch up on anything published while we were in the background.
-        fetchState { json -> channel?.invokeMethod("state", json) }
+        fetch(WearProtocol.RUN_PATH) { json -> channel?.invokeMethod("state", json) }
+        fetch(WearProtocol.TIMERS_PATH) { json -> channel?.invokeMethod("timers", json) }
     }
 
     override fun onPause() {
@@ -117,22 +127,36 @@ class MainActivity : FlutterActivity(), DataClient.OnDataChangedListener {
         super.onPause()
     }
 
-    override fun onDataChanged(events: DataEventBuffer) {
-        // The buffer is only valid during this call, so read it straight away.
-        val json = events
-            .filter {
-                it.type == DataEvent.TYPE_CHANGED &&
-                    it.dataItem.uri.path == WearProtocol.RUN_PATH
-            }
-            .map { WearProtocol.json(it.dataItem) }
-            .lastOrNull() ?: return
-        runOnUiThread { channel?.invokeMethod("state", json) }
+    // Flutter doesn't receive the crown, so forward its scrolling to Dart.
+    override fun onGenericMotionEvent(event: MotionEvent): Boolean {
+        if (event.action == MotionEvent.ACTION_SCROLL &&
+            event.isFromSource(InputDevice.SOURCE_ROTARY_ENCODER)
+        ) {
+            val pixels = -event.getAxisValue(MotionEvent.AXIS_SCROLL) *
+                ViewConfigurationCompat.getScaledVerticalScrollFactor(
+                    ViewConfiguration.get(this), this,
+                )
+            channel?.invokeMethod("rotary", (pixels / resources.displayMetrics.density).toDouble())
+            return true
+        }
+        return super.onGenericMotionEvent(event)
     }
 
-    /** Reads the latest run snapshot from any connected phone. */
-    private fun fetchState(callback: (String?) -> Unit) {
+    override fun onDataChanged(events: DataEventBuffer) {
+        // The buffer is only valid during this call, so read it straight away.
+        val latest = events
+            .filter { it.type == DataEvent.TYPE_CHANGED }
+            .associate { it.dataItem.uri.path to WearProtocol.json(it.dataItem) }
+        runOnUiThread {
+            latest[WearProtocol.RUN_PATH]?.let { channel?.invokeMethod("state", it) }
+            latest[WearProtocol.TIMERS_PATH]?.let { channel?.invokeMethod("timers", it) }
+        }
+    }
+
+    /** Reads the latest JSON published at [path] by any connected phone. */
+    private fun fetch(path: String, callback: (String?) -> Unit) {
         Wearable.getDataClient(this)
-            .getDataItems(WearProtocol.runUri)
+            .getDataItems(WearProtocol.uri(path))
             .addOnSuccessListener { buffer ->
                 val json = buffer
                     .maxByOrNull { WearProtocol.timestamp(it) }
@@ -145,11 +169,15 @@ class MainActivity : FlutterActivity(), DataClient.OnDataChangedListener {
 
     private fun sendCommand(command: String) {
         val messages = Wearable.getMessageClient(this)
-        Wearable.getNodeClient(this).connectedNodes.addOnSuccessListener { nodes ->
-            nodes.forEach {
-                messages.sendMessage(it.id, WearProtocol.COMMAND_PATH, command.toByteArray())
+        Wearable.getNodeClient(this).connectedNodes
+            .addOnSuccessListener { nodes ->
+                Log.i(TAG, "Sending '$command' to ${nodes.size} phone(s)")
+                nodes.forEach { node ->
+                    messages.sendMessage(node.id, WearProtocol.COMMAND_PATH, command.toByteArray())
+                        .addOnFailureListener { Log.w(TAG, "Send to ${node.displayName} failed", it) }
+                }
             }
-        }
+            .addOnFailureListener { Log.w(TAG, "Couldn't list phones", it) }
     }
 
     private fun vibrate(pattern: String) {
@@ -179,6 +207,8 @@ class MainActivity : FlutterActivity(), DataClient.OnDataChangedListener {
     }
 
     companion object {
+        private const val TAG = "OpenHiitWear"
+
         /** Read by [RunListenerService] to skip the notification when visible. */
         @Volatile
         var isForeground = false

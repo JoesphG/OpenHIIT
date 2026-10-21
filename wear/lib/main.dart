@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'run_snapshot.dart';
+import 'timer_summary.dart';
 import 'wear_bridge.dart';
 
 void main() {
@@ -27,17 +28,30 @@ class OpenHiitWearApp extends StatelessWidget {
   }
 }
 
-/// Mirrors the timer running on the phone.
+/// Mirrors the timer running on the phone, and lists its timers to start
+/// from the watch when nothing is running.
 class RunMirrorPage extends StatefulWidget {
   const RunMirrorPage({
     super.key,
     this.initialSnapshot,
+    this.initialTimers,
     this.initialBpm,
+    this.startingTimerId,
+    this.showStartHint = false,
     this.now,
   });
 
   /// For previews and tests: start with this snapshot instead of asking the phone.
   final RunSnapshot? initialSnapshot;
+
+  /// For previews and tests: the phone's timer list.
+  final List<TimerSummary>? initialTimers;
+
+  /// For previews and tests: show this timer as starting.
+  final String? startingTimerId;
+
+  /// For previews and tests: show the "open the phone app" hint.
+  final bool showStartHint;
 
   /// For previews and tests: a heart rate to show.
   final int? initialBpm;
@@ -51,7 +65,20 @@ class RunMirrorPage extends StatefulWidget {
 
 class _RunMirrorPageState extends State<RunMirrorPage> {
   RunSnapshot? _snapshot;
+  List<TimerSummary> _timers = [];
   Timer? _ticker;
+  final _listScroll = ScrollController();
+
+  // A start request waits this long for the phone's run before giving up.
+  static const _startTimeout = Duration(seconds: 6);
+  static const _hintDuration = Duration(seconds: 6);
+  String? _startingId;
+  DateTime? _startRequestedAt;
+  DateTime? _startFailedAt;
+
+  // Return to the timer list this long after a run finishes.
+  static const _doneShownFor = Duration(seconds: 8);
+  DateTime? _doneSince;
 
   // Hide the heart rate if the sensor stops reporting, e.g. a loose strap.
   static const _bpmStaleAfter = Duration(seconds: 10);
@@ -70,20 +97,30 @@ class _RunMirrorPageState extends State<RunMirrorPage> {
   @override
   void initState() {
     super.initState();
-    if (widget.initialSnapshot != null) {
+    if (widget.initialSnapshot != null || widget.initialTimers != null) {
       _snapshot = widget.initialSnapshot;
+      _timers = widget.initialTimers ?? [];
+      _startingId = widget.startingTimerId;
+      _startFailedAt = widget.showStartHint ? _now() : null;
       _bpm = widget.initialBpm;
       _bpmAt = _now();
       return;
     }
-    WearBridge.listen(onState: _onState, onHeartRate: _onHeartRate);
+    WearBridge.listen(
+      onState: _onState,
+      onTimers: _onTimers,
+      onHeartRate: _onHeartRate,
+      onRotary: _onRotary,
+    );
     WearBridge.getState().then(_onState);
+    WearBridge.getTimers().then(_onTimers);
     _ticker = Timer.periodic(const Duration(milliseconds: 200), (_) => _tick());
   }
 
   @override
   void dispose() {
     _ticker?.cancel();
+    _listScroll.dispose();
     WearBridge.keepScreenOn(false);
     super.dispose();
   }
@@ -93,8 +130,47 @@ class _RunMirrorPageState extends State<RunMirrorPage> {
     if (!mounted) {
       return;
     }
-    setState(() => _snapshot = snapshot);
+    setState(() {
+      _snapshot = snapshot;
+      if (snapshot != null && snapshot.active) {
+        _startingId = null;
+        _startFailedAt = null;
+      }
+    });
     _tick();
+  }
+
+  void _onTimers(String? json) {
+    final timers = TimerSummary.parseList(json);
+    if (mounted) {
+      setState(() => _timers = timers);
+    }
+  }
+
+  void _onRotary(double pixels) {
+    if (!_listScroll.hasClients) {
+      return;
+    }
+    final position = _listScroll.position;
+    _listScroll.jumpTo(
+      (position.pixels + pixels).clamp(
+        position.minScrollExtent,
+        position.maxScrollExtent,
+      ),
+    );
+  }
+
+  void _startTimer(TimerSummary timer) {
+    if (_startingId != null) {
+      return;
+    }
+    setState(() {
+      _startingId = timer.id;
+      _startRequestedAt = _now();
+      _startFailedAt = null;
+    });
+    WearBridge.vibrate('tick');
+    WearBridge.command('start:${timer.id}');
   }
 
   void _onHeartRate(double bpm) {
@@ -112,9 +188,28 @@ class _RunMirrorPageState extends State<RunMirrorPage> {
 
   void _tick() {
     final snapshot = _snapshot;
-    final running = snapshot != null && snapshot.active;
-    final position = running ? snapshot.positionAt(_now()) : null;
+    var running = snapshot != null && snapshot.active;
+    var position = running ? snapshot.positionAt(_now()) : null;
+    if (position != null && snapshot!.isStale(position)) {
+      running = false;
+      position = null;
+    }
     final live = position != null && !position.done;
+
+    if (position != null && position.done) {
+      _doneSince ??= _now();
+    } else {
+      _doneSince = null;
+    }
+
+    // The phone app has to be open to start a timer; say so if it isn't.
+    final requestedAt = _startRequestedAt;
+    if (_startingId != null &&
+        requestedAt != null &&
+        _now().difference(requestedAt) > _startTimeout) {
+      _startingId = null;
+      _startFailedAt = _now();
+    }
 
     if (_screenOn != live) {
       _screenOn = live;
@@ -122,7 +217,7 @@ class _RunMirrorPageState extends State<RunMirrorPage> {
     }
 
     if (running) {
-      _buzz(snapshot, position!);
+      _buzz(snapshot!, position!);
     }
     if (mounted) {
       setState(() {});
@@ -177,10 +272,29 @@ class _RunMirrorPageState extends State<RunMirrorPage> {
   @override
   Widget build(BuildContext context) {
     final snapshot = _snapshot;
-    if (snapshot == null || !snapshot.active) {
-      return const _WaitingView();
+    final position = snapshot?.positionAt(_now());
+    final doneSince = _doneSince;
+    final finishedAWhileAgo =
+        doneSince != null && _now().difference(doneSince) > _doneShownFor;
+
+    if (snapshot == null ||
+        position == null ||
+        !snapshot.active ||
+        snapshot.isStale(position) ||
+        finishedAWhileAgo) {
+      if (_timers.isEmpty) {
+        return const _WaitingView();
+      }
+      final failedAt = _startFailedAt;
+      return _TimerListView(
+        timers: _timers,
+        controller: _listScroll,
+        startingId: _startingId,
+        showHint:
+            failedAt != null && _now().difference(failedAt) < _hintDuration,
+        onStart: _startTimer,
+      );
     }
-    final position = snapshot.positionAt(_now());
     if (position.done) {
       return _DoneView(name: snapshot.name, totalMs: position.totalMs);
     }
@@ -490,6 +604,162 @@ class _DoneView extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The phone's timers, to start one from the watch.
+class _TimerListView extends StatelessWidget {
+  const _TimerListView({
+    required this.timers,
+    required this.controller,
+    required this.startingId,
+    required this.showHint,
+    required this.onStart,
+  });
+
+  final List<TimerSummary> timers;
+  final ScrollController controller;
+  final String? startingId;
+  final bool showHint;
+  final ValueChanged<TimerSummary> onStart;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.black,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final size = constraints.biggest.shortestSide;
+          // Generous top and bottom padding lets the first and last cards
+          // scroll into the wide middle of the round screen.
+          return ListView(
+            key: const Key('wear-timer-list'),
+            controller: controller,
+            padding: EdgeInsets.fromLTRB(
+              size * 0.09,
+              size * 0.13,
+              size * 0.09,
+              size * 0.26,
+            ),
+            children: [
+              Text(
+                "Start a timer",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: .7),
+                  fontSize: size * 0.06,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              if (showHint)
+                Padding(
+                  padding: EdgeInsets.only(top: size * 0.03),
+                  child: Text(
+                    "Open OpenHIIT on your phone, then try again",
+                    key: const Key('wear-start-hint'),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.amber,
+                      fontSize: size * 0.055,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              for (final timer in timers)
+                Padding(
+                  padding: EdgeInsets.only(top: size * 0.035),
+                  child: _TimerCard(
+                    timer: timer,
+                    size: size,
+                    starting: timer.id == startingId,
+                    onTap: () => onStart(timer),
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _TimerCard extends StatelessWidget {
+  const _TimerCard({
+    required this.timer,
+    required this.size,
+    required this.starting,
+    required this.onTap,
+  });
+
+  final TimerSummary timer;
+  final double size;
+  final bool starting;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: "Start ${timer.name}",
+      child: Material(
+        color: Color(timer.color),
+        borderRadius: BorderRadius.circular(size * 0.09),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: size * 0.06,
+              vertical: size * 0.035,
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        timer.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: size * 0.07,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        starting ? "Starting on phone…" : timer.details,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: .85),
+                          fontSize: size * 0.052,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(width: size * 0.02),
+                SizedBox.square(
+                  dimension: size * 0.09,
+                  child: starting
+                      ? const CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2.5,
+                        )
+                      : Icon(
+                          Icons.play_arrow,
+                          color: Colors.white,
+                          size: size * 0.09,
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

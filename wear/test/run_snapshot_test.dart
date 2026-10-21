@@ -83,6 +83,26 @@ void main() {
     });
   });
 
+  test('should treat a run as lost when the phone goes quiet', () {
+    final s = snapshot();
+    // One interval ahead is normal between phone updates.
+    expect(
+      s.isStale(s.positionAt(sentAt.add(const Duration(seconds: 12)))),
+      isFalse,
+    );
+    // Two ahead means the phone missed an update it always sends.
+    expect(
+      s.isStale(s.positionAt(sentAt.add(const Duration(seconds: 17)))),
+      isTrue,
+    );
+    expect(
+      snapshot(
+        paused: true,
+      ).isStale(s.positionAt(sentAt.add(const Duration(minutes: 1)))),
+      isFalse,
+    );
+  });
+
   test('should label intervals and sets for the small screen', () {
     final s = snapshot();
     expect(s.intervals[0].intervalLabel, '1 of 2');

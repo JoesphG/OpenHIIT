@@ -9,6 +9,8 @@ import 'package:openhiit/core/providers/timer_creation_provider/timer_creation_p
 import 'package:openhiit/core/providers/theme_provider/theme_provider.dart';
 import 'package:openhiit/features/home/ui/home.dart';
 import 'package:openhiit/core/providers/timer_provider/timer_provider.dart';
+import 'package:openhiit/features/run_timer/wear_sync.dart';
+import 'package:openhiit/features/run_timer/wear_timer_link.dart';
 import 'package:openhiit/shared/globals.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
@@ -45,6 +47,8 @@ void main() async {
     ),
   );
 
+  WearLink.init();
+
   final themeProvider = ThemeProvider();
   await themeProvider.loadFromPrefs();
 
@@ -73,19 +77,21 @@ class WorkoutTimer extends StatelessWidget {
           ),
           ChangeNotifierProvider(create: (_) => TimerCreationProvider()),
         ],
-        child: Consumer<ThemeProvider>(
-          builder: (context, themeProvider, _) {
-            return MaterialApp(
-              title: 'OpenHIIT',
-              debugShowCheckedModeBanner: false,
-              theme: themeProvider.lightTheme,
-              darkTheme: themeProvider.darkTheme,
-              themeMode: themeProvider.themeMode,
-              navigatorKey: navigatorKey,
-              scaffoldMessengerKey: scaffoldMessengerKey,
-              home: const ListTimersPage(),
-            );
-          },
+        child: WearTimerLink(
+          child: Consumer<ThemeProvider>(
+            builder: (context, themeProvider, _) {
+              return MaterialApp(
+                title: 'OpenHIIT',
+                debugShowCheckedModeBanner: false,
+                theme: themeProvider.lightTheme,
+                darkTheme: themeProvider.darkTheme,
+                themeMode: themeProvider.themeMode,
+                navigatorKey: navigatorKey,
+                scaffoldMessengerKey: scaffoldMessengerKey,
+                home: const ListTimersPage(),
+              );
+            },
+          ),
         ));
   }
 }

@@ -133,6 +133,12 @@ class RunSnapshot {
     intervals: intervals,
   );
 
+  /// Whether the phone has gone quiet. It publishes on every interval
+  /// change, so if the local countdown gets two intervals ahead of the last
+  /// snapshot, the phone app has most likely closed mid-run.
+  bool isStale(RunPosition position) =>
+      !paused && !position.done && position.index >= index + 2;
+
   int get totalMs =>
       intervals.fold<int>(0, (sum, interval) => sum + interval.seconds * 1000);
 
