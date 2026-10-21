@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:openhiit/core/logs/logs.dart';
 import 'package:openhiit/core/models/timer_type.dart';
+import 'package:openhiit/features/run_timer/wear_sync.dart';
 import 'package:openhiit/features/run_timer/widgets/functions/functions.dart';
 import 'package:openhiit/features/run_timer/widgets/landscape_timer_view.dart';
 import 'package:openhiit/features/run_timer/widgets/models/timer_list_model_animated.dart';
@@ -41,6 +42,7 @@ class RunTimerState extends State<RunTimer> {
   late SharedPreferences prefs;
   late TimerListModelAnimated<TimerListTileModel> intervalTiles;
   late TimerListModelAnimated<TimerListTileModel> removedTiles;
+  late WearSync _wear;
 
   @override
   void initState() {
@@ -60,10 +62,30 @@ class RunTimerState extends State<RunTimer> {
       initialItems: [],
       removedItemBuilder: _buildRemovedItem,
     );
+    _wear = WearSync(
+      name: widget.timer.name,
+      intervals: widget.intervals,
+      tiles: listItems(widget.timer, widget.intervals),
+    )..listen(_onWatchCommand);
+  }
+
+  void _onWatchCommand(String command) {
+    Log.debug("watch command: $command");
+    switch (command) {
+      case 'pause':
+        if (!_paused) togglePause();
+      case 'resume':
+        if (_paused) togglePause();
+      case 'next':
+        _controller.skipNext();
+      case 'previous':
+        _controller.skipPrevious();
+    }
   }
 
   @override
   void dispose() {
+    _wear.stop();
     _controllerCenter.dispose();
     WakelockPlus.disable();
     super.dispose();
@@ -135,6 +157,13 @@ class RunTimerState extends State<RunTimer> {
             controller: _controller,
             intervals: widget.intervals,
             build: (_, TimerState timerState) {
+              _wear.update(
+                index: timerState.currentInterval,
+                remainingMicroSeconds: timerState.currentMicroSeconds,
+                paused: _paused,
+                ended: timerState.status == 'End',
+              );
+
               while (intervalTiles.length + timerState.currentInterval >
                   widget.intervals.length) {
                 removedTiles.insert(removedTiles.length,
