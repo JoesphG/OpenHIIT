@@ -92,12 +92,6 @@ object OngoingRun {
         if (!paused) {
             builder.setTimeoutAfter(remainingMs + END_GRACE_MS)
         }
-        if (alert) {
-            // Apps can't open themselves from the background, but a
-            // full-screen notification opens the run screen straight away,
-            // like an incoming call. Without the permission it just alerts.
-            builder.setFullScreenIntent(open, true)
-        }
 
         val status = Status.Builder()
             .addTemplate(if (paused) "$name · paused" else "$name · #left# left")

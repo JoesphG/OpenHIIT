@@ -1,5 +1,7 @@
 package com.codepup.workout_timer
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.util.Log
 import android.view.WindowManager
@@ -7,6 +9,7 @@ import com.google.android.gms.wearable.MessageClient
 import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.Wearable
+import androidx.wear.remote.interactions.RemoteActivityHelper
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -28,6 +31,10 @@ class MainActivity : FlutterActivity(), MessageClient.OnMessageReceivedListener 
             when (call.method) {
                 "publish" -> {
                     publish(call.argument<String>("path")!!, call.argument<String>("json")!!)
+                    result.success(null)
+                }
+                "openOnWatch" -> {
+                    openOnWatch()
                     result.success(null)
                 }
                 "runEnded" -> {
@@ -72,6 +79,21 @@ class MainActivity : FlutterActivity(), MessageClient.OnMessageReceivedListener 
         }
     }
 
+    /**
+     * Opens the run screen on the watch. The watch app can't open itself from
+     * the background, but the system will open it at the phone's request.
+     */
+    private fun openOnWatch() {
+        val intent = Intent(Intent.ACTION_VIEW)
+            .addCategory(Intent.CATEGORY_BROWSABLE)
+            .setData(Uri.parse(WATCH_RUN_URI))
+        try {
+            RemoteActivityHelper(this).startRemoteActivity(intent)
+        } catch (e: Exception) {
+            Log.d(TAG, "Couldn't open the run on the watch", e)
+        }
+    }
+
     private fun showOverLockScreen(show: Boolean) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(show)
@@ -100,6 +122,7 @@ class MainActivity : FlutterActivity(), MessageClient.OnMessageReceivedListener 
         private const val CHANNEL = "openhiit/wear"
         private const val COMMAND_PATH = "/openhiit/command"
         private const val PING_PATH = "/openhiit/ping"
+        private const val WATCH_RUN_URI = "openhiit://run"
         private const val PONG_PATH = "/openhiit/pong"
     }
 }

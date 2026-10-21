@@ -71,6 +71,17 @@ class WearLink {
     await publish(timersPath, json);
   }
 
+  /// Opens the run screen on the watch, which can't open itself.
+  static Future<void> _openOnWatch() async {
+    try {
+      await _channel.invokeMethod('openOnWatch');
+    } on MissingPluginException {
+      // No watch support on this platform (e.g. iOS).
+    } on PlatformException catch (e) {
+      Log.debug("Wear openOnWatch failed: $e");
+    }
+  }
+
   /// Lets the phone lock screen hide the app again after a watch-started run.
   static Future<void> _runEnded() async {
     try {
@@ -166,6 +177,10 @@ class WearSync {
         remainingMicroSeconds <= resyncBefore;
     if (!changed && !resync) {
       return;
+    }
+    if (_lastIndex == null && !ended) {
+      // First update of a new run: bring the watch's run screen up.
+      WearLink._openOnWatch();
     }
     if (changed) {
       // An interval that starts inside the resync window needs no resync.
