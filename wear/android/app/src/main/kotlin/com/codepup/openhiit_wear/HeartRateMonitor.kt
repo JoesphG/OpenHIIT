@@ -42,7 +42,8 @@ class HeartRateMonitor(context: Context, private val onBpm: (Double) -> Unit) {
         try {
             measureClient.registerMeasureCallback(DataType.HEART_RATE_BPM, callback)
             registered = true
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
+            // Heart rate is optional; never let a sensor problem stop the timer.
             Log.w(TAG, "Heart rate unavailable", e)
         }
     }
@@ -52,7 +53,11 @@ class HeartRateMonitor(context: Context, private val onBpm: (Double) -> Unit) {
             return
         }
         registered = false
-        measureClient.unregisterMeasureCallbackAsync(DataType.HEART_RATE_BPM, callback)
+        try {
+            measureClient.unregisterMeasureCallbackAsync(DataType.HEART_RATE_BPM, callback)
+        } catch (e: Throwable) {
+            Log.w(TAG, "Couldn't stop heart rate", e)
+        }
     }
 
     companion object {
