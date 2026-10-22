@@ -22,7 +22,7 @@ import io.flutter.plugin.common.MethodChannel
  * Hosts the Flutter UI and bridges it to the Wearable Data Layer.
  *
  * Dart calls: getState, getTimers, command(String), vibrate(String),
- * keepScreenOn(Boolean).
+ * keepScreenOn(Boolean), runShowing(Boolean).
  * Kotlin calls into Dart: state(String?) whenever the phone publishes a snapshot,
  * timers(String?) when its timer list changes, rotary(Double) with crown
  * scrolling in logical pixels,
@@ -31,6 +31,9 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity(), DataClient.OnDataChangedListener {
     private var channel: MethodChannel? = null
     private lateinit var heartRate: HeartRateMonitor
+
+    // Set by Dart while a run is on screen.
+    private var runShowing = false
 
     private val heartRatePermission =
         if (Build.VERSION.SDK_INT >= 36) {
@@ -91,6 +94,10 @@ class MainActivity : FlutterActivity(), DataClient.OnDataChangedListener {
                     Haptics.vibrate(this, call.arguments as String)
                     result.success(null)
                 }
+                "runShowing" -> {
+                    runShowing = call.arguments as Boolean
+                    result.success(null)
+                }
                 "keepScreenOn" -> {
                     setKeepScreenOn(call.arguments as Boolean)
                     result.success(null)
@@ -126,6 +133,13 @@ class MainActivity : FlutterActivity(), DataClient.OnDataChangedListener {
     }
 
     override fun onPause() {
+        // Swiping the app away mid-run ends the run, like the phone's back
+        // button. Leaving any other way (the crown, the screen timing out)
+        // doesn't finish the activity, so the run carries on.
+        if (isFinishing && runShowing) {
+            runShowing = false
+            sendCommand("stop")
+        }
         isForeground = false
         ClockSync.onOffsetChanged = null
         heartRate.stop()

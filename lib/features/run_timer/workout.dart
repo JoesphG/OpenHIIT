@@ -4,6 +4,7 @@ import 'package:background_hiit_timer/models/interval_type.dart';
 import 'package:background_hiit_timer/models/timer_state.dart';
 import 'package:confetti/confetti.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:openhiit/core/logs/logs.dart';
 import 'package:openhiit/core/models/timer_type.dart';
@@ -80,7 +81,29 @@ class RunTimerState extends State<RunTimer> {
         _controller.skipNext();
       case 'previous':
         _controller.skipPrevious();
+      case 'stop':
+        _stopFromWatch();
     }
+  }
+
+  /// Ends the run as the back button would, from the watch's back button or
+  /// swipe.
+  void _stopFromWatch() {
+    final route = ModalRoute.of(context);
+    if (route == null || !route.isActive) {
+      return;
+    }
+    // The phone is usually locked, when Flutter builds no frames, so the
+    // pop's transition (and this screen's dispose) could wait until it's
+    // unlocked. Stop the timer and tell the watch straight away.
+    _controller.stop();
+    _wear.stop();
+    if (route.isCurrent) {
+      Navigator.of(context).pop();
+    } else {
+      Navigator.of(context).removeRoute(route);
+    }
+    SchedulerBinding.instance.scheduleWarmUpFrame();
   }
 
   @override

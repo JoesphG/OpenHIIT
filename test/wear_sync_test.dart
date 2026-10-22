@@ -151,6 +151,14 @@ void main() {
     expect(published.map((s) => s['active']), [false, false]);
   });
 
+  test('should tell the watch only once when stopped twice', () {
+    final sync = buildSync();
+    // A watch stop ends the run, then the run screen's dispose stops again.
+    sync.stop();
+    sync.stop();
+    expect(published.map((s) => s['active']), [false]);
+  });
+
   group('WearLink', () {
     setUp(WearLink.init);
 

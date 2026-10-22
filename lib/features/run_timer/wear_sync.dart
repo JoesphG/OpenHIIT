@@ -135,10 +135,11 @@ class WearSync {
   bool? _lastPaused;
   bool? _lastEnded;
   int? _resyncedIndex;
+  bool _stopped = false;
   StreamSubscription<Map<String, dynamic>?>? _updates;
 
-  /// Calls [onCommand] with "pause", "resume", "next" or "previous" when the
-  /// watch's buttons are pressed, and starts following the timer.
+  /// Calls [onCommand] with "pause", "resume", "next", "previous" or "stop"
+  /// when the watch's buttons are pressed, and starts following the timer.
   void listen(void Function(String command) onCommand) {
     WearLink._runCommands = onCommand;
     // Follow the background timer's own updates rather than the run screen's
@@ -201,7 +202,13 @@ class WearSync {
   }
 
   /// Tells the watch the run is over and stops taking its commands.
+  ///
+  /// Safe to call more than once.
   void stop() {
+    if (_stopped) {
+      return;
+    }
+    _stopped = true;
     _updates?.cancel();
     WearLink._runCommands = null;
     WearLink._runEnded();

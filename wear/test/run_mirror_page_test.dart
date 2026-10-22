@@ -103,4 +103,34 @@ void main() {
     );
     expect(find.text('Start a timer'), findsOneWidget);
   });
+
+  testWidgets('should end the run from the back button', (tester) async {
+    await pumpPage(
+      tester,
+      RunMirrorPage(
+        initialSnapshot: run(),
+        initialTimers: timers,
+        now: () => now.add(const Duration(seconds: 5)),
+      ),
+    );
+    await tester.tap(find.bySemanticsLabel('Back'));
+    await tester.pump();
+    expect(find.text('Push-ups'), findsNothing);
+    expect(find.text('Start a timer'), findsOneWidget);
+  });
+
+  testWidgets('should end the run on a system back', (tester) async {
+    await pumpPage(
+      tester,
+      RunMirrorPage(
+        initialSnapshot: run(),
+        initialTimers: timers,
+        now: () => now.add(const Duration(seconds: 5)),
+      ),
+    );
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+    expect(find.text('Push-ups'), findsNothing);
+    expect(find.text('Start a timer'), findsOneWidget);
+  });
 }

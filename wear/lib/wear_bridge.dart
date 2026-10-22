@@ -40,14 +40,18 @@ class WearBridge {
   /// The phone's timer list JSON, or null if it hasn't published one.
   static Future<String?> getTimers() => _invoke<String>('getTimers', null);
 
-  /// Sends "pause", "resume", "next", "previous" or `start:<timerId>` to the
-  /// phone.
+  /// Sends "pause", "resume", "next", "previous", "stop" or
+  /// `start:<timerId>` to the phone.
   static Future<void> command(String command) => _invoke('command', command);
 
   /// Plays "change", "tick" or "done".
   static Future<void> vibrate(String pattern) => _invoke('vibrate', pattern);
 
   static Future<void> keepScreenOn(bool on) => _invoke('keepScreenOn', on);
+
+  /// Whether a run is on screen, so dismissing the app ends it.
+  static Future<void> setRunShowing(bool showing) =>
+      _invoke('runShowing', showing);
 
   static Future<T?> _invoke<T>(String method, Object? arguments) async {
     try {

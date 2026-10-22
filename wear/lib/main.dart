@@ -86,6 +86,10 @@ class _RunMirrorPageState extends State<RunMirrorPage> {
   DateTime? _bpmAt;
 
   bool? _screenOn;
+  bool? _runShowing;
+
+  // A run ended from the watch, ignored until the phone confirms it's over.
+  String? _stoppedRunId;
 
   // Snapshots carry phone timestamps, so count on the phone's clock.
   Duration _clockOffset = Duration.zero;
@@ -127,7 +131,10 @@ class _RunMirrorPageState extends State<RunMirrorPage> {
 
   void _onState(String? json) {
     final snapshot = RunSnapshot.tryParse(json);
-    if (!mounted) {
+    if (!mounted ||
+        (snapshot != null &&
+            snapshot.active &&
+            snapshot.runId == _stoppedRunId)) {
       return;
     }
     setState(() {
@@ -219,6 +226,13 @@ class _RunMirrorPageState extends State<RunMirrorPage> {
       WearBridge.keepScreenOn(live);
     }
 
+    // Swiping the app away while a run shows ends it, like the phone's back.
+    final runShowing = _showsRun();
+    if (_runShowing != runShowing) {
+      _runShowing = runShowing;
+      WearBridge.setRunShowing(runShowing);
+    }
+
     if (mounted) {
       setState(() {});
     }
@@ -234,19 +248,37 @@ class _RunMirrorPageState extends State<RunMirrorPage> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
+  /// Ends the run on the phone, as its back button does, and goes back to
+  /// the timer list.
+  void _stop(RunSnapshot snapshot) {
+    setState(() {
+      _stoppedRunId = snapshot.runId;
+      _snapshot = null;
+    });
+    WearBridge.vibrate('tick');
+    WearBridge.command('stop');
+  }
+
+  /// Whether the run (or its "Done!" screen) is on screen.
+  bool _showsRun() {
     final snapshot = _snapshot;
     final position = snapshot?.positionAt(_now());
     final doneSince = _doneSince;
     final finishedAWhileAgo =
         doneSince != null && _now().difference(doneSince) > _doneShownFor;
+    return snapshot != null &&
+        position != null &&
+        snapshot.active &&
+        !snapshot.isStale(position) &&
+        !finishedAWhileAgo;
+  }
 
-    if (snapshot == null ||
-        position == null ||
-        !snapshot.active ||
-        snapshot.isStale(position) ||
-        finishedAWhileAgo) {
+  @override
+  Widget build(BuildContext context) {
+    final snapshot = _snapshot;
+    final position = snapshot?.positionAt(_now());
+
+    if (snapshot == null || position == null || !_showsRun()) {
       if (_timers.isEmpty) {
         return const _WaitingView();
       }
@@ -260,9 +292,22 @@ class _RunMirrorPageState extends State<RunMirrorPage> {
         onStart: _startTimer,
       );
     }
-    if (position.done) {
-      return _DoneView(name: snapshot.name, totalMs: position.totalMs);
-    }
+    // Back (a swipe on most watches) leaves the run like the button does.
+    // The activity's own swipe-to-dismiss is handled in MainActivity.kt.
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) {
+          _stop(snapshot);
+        }
+      },
+      child: position.done
+          ? _DoneView(name: snapshot.name, totalMs: position.totalMs)
+          : _runView(snapshot, position),
+    );
+  }
+
+  Widget _runView(RunSnapshot snapshot, RunPosition position) {
     return _RunView(
       snapshot: snapshot,
       position: position,
@@ -270,6 +315,7 @@ class _RunMirrorPageState extends State<RunMirrorPage> {
       onTogglePause: () => _togglePause(snapshot, position),
       onNext: () => WearBridge.command('next'),
       onPrevious: () => WearBridge.command('previous'),
+      onBack: () => _stop(snapshot),
     );
   }
 }
@@ -330,6 +376,7 @@ class _RunView extends StatelessWidget {
     required this.onTogglePause,
     required this.onNext,
     required this.onPrevious,
+    required this.onBack,
   });
 
   final RunSnapshot snapshot;
@@ -338,6 +385,7 @@ class _RunView extends StatelessWidget {
   final VoidCallback onTogglePause;
   final VoidCallback onNext;
   final VoidCallback onPrevious;
+  final VoidCallback onBack;
 
   @override
   Widget build(BuildContext context) {
@@ -359,25 +407,39 @@ class _RunView extends StatelessWidget {
         );
         return Column(
           children: [
-            SizedBox(height: size * 0.03),
-            // The circle is narrowest at the top, so keep the name within
-            // the visible width and truncate long exercise names.
+            SizedBox(height: size * 0.01),
+            // The circle is narrowest at the top, so keep the back button
+            // and name within the visible width and truncate long names.
             SizedBox(
-              height: size * 0.1,
-              width: size * 0.66,
-              child: Center(
-                child: Text(
-                  interval.action,
-                  key: const Key('wear-action'),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: size * 0.08,
-                    fontWeight: FontWeight.bold,
+              height: size * 0.12,
+              width: size * 0.72,
+              child: Row(
+                children: [
+                  _RoundButton(
+                    key: const Key('wear-back'),
+                    icon: Icons.arrow_back,
+                    label: 'Back',
+                    diameter: size * 0.12,
+                    onPressed: onBack,
                   ),
-                ),
+                  SizedBox(width: size * 0.01),
+                  Expanded(
+                    child: Text(
+                      interval.action,
+                      key: const Key('wear-action'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: size * 0.08,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  // Balances the back button so the name stays centred.
+                  SizedBox(width: size * 0.13),
+                ],
               ),
             ),
             SizedBox(
@@ -469,6 +531,7 @@ class _RunView extends StatelessWidget {
 
 class _RoundButton extends StatelessWidget {
   const _RoundButton({
+    super.key,
     required this.icon,
     required this.label,
     required this.diameter,
